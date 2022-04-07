@@ -5,7 +5,7 @@ import sys
 
 pg.init()
 pg.display.set_caption("Battleship")
-SCREEN_WIDTH = 500
+SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 500
 SCREEN = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 SQUARE_SIZE = 45
@@ -23,6 +23,7 @@ class Battleship:
         self.SHIP_SIZES = [5, 4, 3, 3, 2]
         self.SHIP_COORDINATES = dict()
         self.SHOT_MAP = np.zeros([10, 10])
+        self.PROB_MAP = np.zeros([10, 10])
 
         # ai variables
         self.hunt = True
@@ -30,7 +31,7 @@ class Battleship:
 
         self.SCORE = 0
         self.NUM_GUESSES = 0
-        self.GUESS_DELAY = 100
+        self.GUESS_DELAY = 500
         self.GUESS_EVENT = pg.USEREVENT
         pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
         self.GAME_OVER = False
@@ -90,6 +91,48 @@ class Battleship:
                     continue
                 break
 
+    def gen_prob_map(self):
+        prob_map = np.zeros([10, 10])
+        for ship_size in set(self.SHIP_COORDINATES.values()):
+            print(set(self.SHIP_COORDINATES.values()))
+            use_size = ship_size - 1
+            # check where a ship will fit on the board
+            for row in range(10):
+                for col in range(10):
+                    if self.SHOT_MAP[row][col] != 1:
+                        # get potential ship endpoints
+                        endpoints = []
+                        # add 1 to all endpoints to compensate for python indexing
+                        if row - use_size >= 0:
+                            endpoints.append(((row - use_size, col), (row + 1, col + 1)))
+                        if row + use_size <= 9:
+                            endpoints.append(((row, col), (row + use_size + 1, col + 1)))
+                        if col - use_size >= 0:
+                            endpoints.append(((row, col - use_size), (row + 1, col + 1)))
+                        if col + use_size <= 9:
+                            endpoints.append(((row, col), (row + 1, col + use_size + 1)))
+
+                        for (start_row, start_col), (end_row, end_col) in endpoints:
+                            if np.all(self.SHOT_MAP[start_row:end_row, start_col:end_col] == 0):
+                                prob_map[start_row:end_row, start_col:end_col] += 1
+
+                    # increase probability of attacking squares near successful hits
+                    if self.SHOT_MAP[row][col] == 1 and self.SHIP_MAP[row][col] == 1:
+                        if (row + 1 <= 9) and (self.SHOT_MAP[row + 1][col] == 0):
+                            prob_map[row + 1][col] += 10
+                        if (row - 1 >= 0) and (self.SHOT_MAP[row - 1][col] == 0):
+                            prob_map[row - 1][col] += 10
+                        if (col + 1 <= 9) and (self.SHOT_MAP[row][col + 1] == 0):
+                            prob_map[row][col + 1] += 10
+                        if (col - 1 >= 0) and (self.SHOT_MAP[row][col - 1] == 0):
+                            prob_map[row][col - 1] += 10
+
+                    # decrease probability for misses to zero
+                    elif self.SHOT_MAP[row][col] == 1 and self.SHIP_MAP[row][col] != 1:
+                        prob_map[row][col] = 0
+
+        self.PROB_MAP = prob_map
+
     def guess_random(self, parity=None):
         while True:
             guess_row, guess_col = random.choice(range(10)), random.choice(range(10))
@@ -101,7 +144,6 @@ class Battleship:
 
         return guess_row, guess_col
 
-    @jit()
     def hunt_target(self, parity=None):
         # enter hunt mode when no more targets left
         if not self.targets:
@@ -119,6 +161,15 @@ class Battleship:
                         (self.SHOT_MAP[target_row][target_col] == 0) and \
                         ((target_row, target_col) not in self.targets):
                     self.targets.append((target_row, target_col))
+
+        return guess_row, guess_col
+
+    def guess_prob(self):
+        self.gen_prob_map()
+        # get the row, col numbers of the largest element in PROB_MAP
+        # https://thispointer.com/find-max-value-its-index-in-numpy-array-numpy-amax/
+        max_indices = np.where(self.PROB_MAP == np.amax(self.PROB_MAP))
+        guess_row, guess_col = max_indices[0][0], max_indices[1][0]
 
         return guess_row, guess_col
 
@@ -156,6 +207,19 @@ class Battleship:
 
             board_y += SQUARE_SIZE + OFFSET_SIZE
 
+    def draw_heat_map(self):
+        board_y = 0
+        for i in range(10):
+            board_x = 500
+            for j in range(10):
+                if np.sum(self.PROB_MAP):
+                    pass
+                    pg.draw.rect(SCREEN, (self.PROB_MAP[i][j] * 3, 0, 0), pg.Rect(board_x, board_y, SQUARE_SIZE, SQUARE_SIZE))
+
+                board_x += SQUARE_SIZE + OFFSET_SIZE
+
+            board_y += SQUARE_SIZE + OFFSET_SIZE
+
     def reset_board(self):
         self.SHIP_MAP = np.zeros([10, 10])
         self.SHOT_MAP = np.zeros([10, 10])
@@ -186,7 +250,7 @@ class Battleship:
                     pg.quit()
                     sys.exit()
                 if event.type == self.GUESS_EVENT:
-                    guess_row, guess_col = self.hunt_target(parity=2)
+                    guess_row, guess_col = self.guess_prob()
                     self.shoot(guess_row, guess_col)
 
                 if event.type == pg.MOUSEBUTTONDOWN:
@@ -206,11 +270,13 @@ class Battleship:
                         self.place_ships()
 
             if self.GAME_OVER:
+                print(self.NUM_GUESSES)
                 pg.quit()
                 sys.exit()
 
             SCREEN.fill(BLACK)
             self.draw_board()
+            self.draw_heat_map()
 
             pg.display.update()
 

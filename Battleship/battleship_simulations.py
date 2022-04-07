@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import random
 import time
 from collections import Counter
+from numba import jit
 
 
 class Battleship:
@@ -10,7 +11,8 @@ class Battleship:
     def __init__(self):
         self.SHIP_MAP = np.zeros([10, 10])
         self.SHOT_MAP = np.zeros([10, 10])
-        self.SHIP_SIZES = [5, 4, 3, 3, 2]
+        self.PROB_MAP = np.zeros([10, 10])
+        self.SHIP_SIZES = (5, 4, 3, 3, 2)
         self.SHIP_COORDINATES = dict()
 
         self.targets = []
@@ -74,6 +76,31 @@ class Battleship:
                     continue
                 break
 
+    def gen_prob_map(self):
+        prob_map = np.zeros([10, 10])
+        for ship_size in self.SHIP_SIZES:
+            use_size = ship_size - 1
+            # check where a ship will fit on the board
+            for row in range(10):
+                for col in range(10):
+                    if self.SHOT_MAP[row][col] != 1:
+                        # get potential ship endpoints
+                        endpoints = []
+                        # add 1 to all endpoints to compensate for python indexing
+                        if row - use_size >= 0:
+                            endpoints.append(((row - use_size, col), (row + 1, col + 1)))
+                        if row + use_size <= 9:
+                            endpoints.append(((row, col), (row + use_size + 1, col + 1)))
+                        if col - use_size >= 0:
+                            endpoints.append(((row, col - use_size), (row + 1, col + 1)))
+                        if col + use_size <= 9:
+                            endpoints.append(((row, col), (row + 1, col + use_size + 1)))
+
+                        for (start_row, start_col), (end_row, end_col) in endpoints:
+                            if np.all(self.SHOT_MAP[start_row:end_row, start_col:end_col] == 0):
+                                prob_map[start_row:end_row, start_col:end_col] += 1
+        self.PROB_MAP = prob_map
+
     def reset_board(self):
         self.SHIP_MAP = np.zeros([10, 10])
         self.SHOT_MAP = np.zeros([10, 10])
@@ -116,6 +143,24 @@ class Battleship:
 
         return guess_row, guess_col
 
+    def guess_prob(self):
+        self.PROB_MAP = gen_prob_map(set(self.SHIP_COORDINATES.values()), self.SHOT_MAP, self.SHIP_MAP, np.zeros([10, 10]))
+        # get the row, col numbers of the largest element in PROB_MAP
+        # https://thispointer.com/find-max-value-its-index-in-numpy-array-numpy-amax/
+        max_indices = np.where(self.PROB_MAP == np.amax(self.PROB_MAP))
+        guess_row, guess_col = max_indices[0][0], max_indices[1][0]
+        if self.SHIP_MAP[guess_row][guess_col] == 1:
+            if (guess_row + 1 <= 9) and (self.SHOT_MAP[guess_row + 1][guess_col] == 0):
+                self.targets.append((guess_row + 1, guess_col))
+            if (guess_row - 1 >= 0) and (self.SHOT_MAP[guess_row - 1][guess_col] == 0):
+                self.targets.append((guess_row - 1, guess_col))
+            if (guess_col + 1 <= 9) and (self.SHOT_MAP[guess_row][guess_col + 1] == 0):
+                self.targets.append((guess_row, guess_col + 1))
+            if (guess_col - 1 >= 0) and (self.SHOT_MAP[guess_row][guess_col - 1] == 0):
+                self.targets.append((guess_row, guess_col - 1))
+
+        return guess_row, guess_col
+
     def shoot(self, guess_row, guess_col):
         self.SHOT_MAP[guess_row][guess_col] = 1
         self.NUM_GUESSES += 1
@@ -127,10 +172,10 @@ class Battleship:
         if self.SCORE == sum(self.SHIP_SIZES):
             self.GAME_OVER = True
 
-    def simulate_games(self, num_runs=100, strategy="random"):
+    def simulate_games(self, num_games, strategy="random"):
         start_time = time.time()
         all_guesses = []
-        for _ in range(num_runs):
+        for _ in range(num_games):
             self.place_ships()
             while not self.GAME_OVER:
                 if strategy == "random":
@@ -141,13 +186,56 @@ class Battleship:
                     guess_row, guess_col = self.hunt_target(2)
                 elif strategy == "hunt_target_min_parity":
                     guess_row, guess_col = self.hunt_target(min(self.SHIP_COORDINATES.values()))
+                elif strategy == "prob":
+                    guess_row, guess_col = self.guess_prob()
                 else:
                     raise Exception(f"invalid strategy chosen: {strategy}")
                 self.shoot(guess_row, guess_col)
             all_guesses.append(self.NUM_GUESSES)
             self.reset_board()
-        print(f'{time.time() - start_time:.2f} seconds to simulate {num_runs} games with the "{strategy}"strategy')
+        print(f'{time.time() - start_time:.2f} seconds to simulate {num_games} games with the "{strategy}" strategy')
         return all_guesses
+
+
+@jit(nopython=True)
+def gen_prob_map(ship_sizes, shot_map, ship_map, prob_map):
+    for ship_size in ship_sizes:
+        use_size = ship_size - 1
+        # check where a ship will fit on the board
+        for row in range(10):
+            for col in range(10):
+                if shot_map[row][col] != 1:
+                    # get potential ship endpoints
+                    endpoints = []
+                    # add 1 to all endpoints to compensate for python indexing
+                    if row - use_size >= 0:
+                        endpoints.append(((row - use_size, col), (row + 1, col + 1)))
+                    if row + use_size <= 9:
+                        endpoints.append(((row, col), (row + use_size + 1, col + 1)))
+                    if col - use_size >= 0:
+                        endpoints.append(((row, col - use_size), (row + 1, col + 1)))
+                    if col + use_size <= 9:
+                        endpoints.append(((row, col), (row + 1, col + use_size + 1)))
+
+                    for (start_row, start_col), (end_row, end_col) in endpoints:
+                        if np.all(shot_map[start_row:end_row, start_col:end_col] == 0):
+                            prob_map[start_row:end_row, start_col:end_col] += 1
+                # increase probability of attacking squares near successful hits
+                if shot_map[row][col] == 1 and ship_map[row][col] == 1:
+                    if (row + 1 <= 9) and (shot_map[row + 1][col] == 0):
+                        prob_map[row + 1][col] += 10
+                    if (row - 1 >= 0) and (shot_map[row - 1][col] == 0):
+                        prob_map[row - 1][col] += 10
+                    if (col + 1 <= 9) and (shot_map[row][col + 1] == 0):
+                        prob_map[row][col + 1] += 10
+                    if (col - 1 >= 0) and (shot_map[row][col - 1] == 0):
+                        prob_map[row][col - 1] += 10
+
+                # decrease probability for misses to zero
+                elif shot_map[row][col] == 1 and ship_map[row][col] != 1:
+                    prob_map[row][col] = 0
+
+    return prob_map
 
 
 def plot_games(num_guesses):
@@ -159,14 +247,20 @@ def plot_games(num_guesses):
     plt.plot(games_by_score.keys(), games_by_score.values())
 
 
-if __name__ == "__main__":
-    num_games = 1000
+def sim_all_strategies(num_games=10000):
     random_guesses = Battleship().simulate_games(num_games, strategy="random")
     ht_guesses = Battleship().simulate_games(num_games, strategy="hunt_target")
     ht_parity_guesses = Battleship().simulate_games(num_games, strategy="hunt_target_parity")
     ht_parity_min_guesses = Battleship().simulate_games(num_games, strategy="hunt_target_min_parity")
+    prob_guesses = Battleship().simulate_games(num_games, strategy="prob")
     plot_games(random_guesses)
     plot_games(ht_guesses)
     plot_games(ht_parity_guesses)
     plot_games(ht_parity_min_guesses)
+    plot_games(prob_guesses)
     plt.show()
+
+
+if __name__ == "__main__":
+    sim_all_strategies()
+
