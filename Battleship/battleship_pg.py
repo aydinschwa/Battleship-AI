@@ -12,6 +12,7 @@ SQUARE_SIZE = 45
 OFFSET_SIZE = 2
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
+RED = (200, 0, 0)
 
 
 class Battleship:
@@ -19,9 +20,9 @@ class Battleship:
     def __init__(self):
 
         self.SHIP_MAP = np.zeros([10, 10])
+        self.SHIP_SIZES = [5, 4, 3, 3, 2]
+        self.SHIP_COORDINATES = dict()
         self.SHOT_MAP = np.zeros([10, 10])
-        self.SHIP_SIZES = [6, 5, 3, 3, 2]
-        self.GAME_OVER = False
 
         # ai variables
         self.hunt = True
@@ -32,6 +33,7 @@ class Battleship:
         self.GUESS_DELAY = 100
         self.GUESS_EVENT = pg.USEREVENT
         pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
+        self.GAME_OVER = False
 
     def place_ships(self):
         for ship_size in self.SHIP_SIZES:
@@ -73,22 +75,37 @@ class Battleship:
                 # check that all spaces that we want to insert into are clear
                 if np.all(self.SHIP_MAP[start_row:end_row, start_col:end_col] == 0):
                     self.SHIP_MAP[start_row:end_row, start_col:end_col] = 1
+
+                    # create a quickly-searchable dictionary of coordinates mapped to ships
+                    if const_axis == "row":
+                        coord_list = list(zip([start_row] * ship_size, [col for col in range(start_col, end_col)]))
+                        for coord in coord_list:
+                            self.SHIP_COORDINATES[coord] = ship_size
+                    elif const_axis == "col":
+                        coord_list = list(zip([row for row in range(start_row, end_row)], [start_col] * ship_size))
+                        for coord in coord_list:
+                            self.SHIP_COORDINATES[coord] = ship_size
+
                 else:
                     continue
                 break
 
-    def guess_random(self):
+    def guess_random(self, parity=None):
         while True:
             guess_row, guess_col = random.choice(range(10)), random.choice(range(10))
+            if parity:
+                if (guess_row + guess_col) % parity != 0:
+                    continue
             if self.SHOT_MAP[guess_row][guess_col] == 0:
                 break
 
         return guess_row, guess_col
 
-    def hunt_target(self):
+    @jit()
+    def hunt_target(self, parity=None):
         # enter hunt mode when no more targets left
         if not self.targets:
-            guess_row, guess_col = self.guess_random()
+            guess_row, guess_col = self.guess_random(parity)
         else:
             guess_row, guess_col = self.targets.pop()
 
@@ -98,9 +115,9 @@ class Battleship:
                                  (guess_row - 1, guess_col), (guess_row, guess_col - 1)]
             for target_row, target_col in potential_targets:
                 if (0 <= target_row <= 9) and \
-                   (0 <= target_col <= 9) and \
-                   (self.SHOT_MAP[target_row][target_col] == 0) and \
-                   ((target_row, target_col) not in self.targets):
+                        (0 <= target_col <= 9) and \
+                        (self.SHOT_MAP[target_row][target_col] == 0) and \
+                        ((target_row, target_col) not in self.targets):
                     self.targets.append((target_row, target_col))
 
         return guess_row, guess_col
@@ -121,6 +138,16 @@ class Battleship:
                                  (board_x + SQUARE_SIZE, board_y + SQUARE_SIZE),
                                  width=5)
                     pg.draw.line(SCREEN, BLACK,
+                                 (board_x, board_y + SQUARE_SIZE),
+                                 (board_x + SQUARE_SIZE, board_y),
+                                 width=5)
+
+                if self.SHIP_MAP[i][j] == 1 and self.SHOT_MAP[i][j] == 1:
+                    pg.draw.line(SCREEN, RED,
+                                 (board_x, board_y),
+                                 (board_x + SQUARE_SIZE, board_y + SQUARE_SIZE),
+                                 width=5)
+                    pg.draw.line(SCREEN, RED,
                                  (board_x, board_y + SQUARE_SIZE),
                                  (board_x + SQUARE_SIZE, board_y),
                                  width=5)
@@ -146,6 +173,8 @@ class Battleship:
 
         if self.SHIP_MAP[guess_row][guess_col] == 1:
             self.SCORE += 1
+            self.SHIP_COORDINATES.pop((guess_row, guess_col))
+
         if self.SCORE == sum(self.SHIP_SIZES):
             self.GAME_OVER = True
 
@@ -157,7 +186,7 @@ class Battleship:
                     pg.quit()
                     sys.exit()
                 if event.type == self.GUESS_EVENT:
-                    guess_row, guess_col = self.hunt_target()
+                    guess_row, guess_col = self.hunt_target(parity=2)
                     self.shoot(guess_row, guess_col)
 
                 if event.type == pg.MOUSEBUTTONDOWN:
@@ -177,7 +206,6 @@ class Battleship:
                         self.place_ships()
 
             if self.GAME_OVER:
-                print(self.NUM_GUESSES)
                 pg.quit()
                 sys.exit()
 
