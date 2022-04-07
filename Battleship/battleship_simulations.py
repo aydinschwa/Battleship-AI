@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import random
 import time
 from collections import Counter
+from statistics import mean
 
 
 class Battleship:
@@ -12,6 +13,8 @@ class Battleship:
         self.SHOT_MAP = np.zeros([10, 10])
         self.SHIP_SIZES = [6, 5, 3, 3, 2]
         self.GAME_OVER = False
+
+        self.targets = []
 
         self.SCORE = 0
         self.NUM_GUESSES = 0
@@ -66,6 +69,8 @@ class Battleship:
         self.SHIP_SIZES = [6, 5, 3, 3, 2]
         self.GAME_OVER = False
 
+        self.targets = []
+
         self.SCORE = 0
         self.NUM_GUESSES = 0
 
@@ -75,6 +80,29 @@ class Battleship:
             if self.SHOT_MAP[guess_row][guess_col] == 0:
                 break
 
+        return guess_row, guess_col
+
+    def hunt_target(self):
+        # enter hunt mode when no more targets left
+        if not self.targets:
+            guess_row, guess_col = self.guess_random()
+        else:
+            guess_row, guess_col = self.targets.pop()
+
+        if self.SHIP_MAP[guess_row][guess_col] == 1:
+            # add all adjacent squares to list of potential targets where possible
+            potential_targets = [(guess_row + 1, guess_col), (guess_row, guess_col + 1),
+                                 (guess_row - 1, guess_col), (guess_row, guess_col - 1)]
+            for target_row, target_col in potential_targets:
+                if (0 <= target_row <= 9) and \
+                   (0 <= target_col <= 9) and \
+                   (self.SHOT_MAP[target_row][target_col] == 0) and \
+                   ((target_row, target_col) not in self.targets):
+                    self.targets.append((target_row, target_col))
+
+        return guess_row, guess_col
+
+    def shoot(self, guess_row, guess_col):
         self.SHOT_MAP[guess_row][guess_col] = 1
         self.NUM_GUESSES += 1
 
@@ -83,13 +111,19 @@ class Battleship:
         if self.SCORE == sum(self.SHIP_SIZES):
             self.GAME_OVER = True
 
-    def simulate_games(self, num_runs=100):
+    def simulate_games(self, num_runs=100, strategy="random"):
         start_time = time.time()
         all_guesses = []
         for _ in range(num_runs):
             self.place_ships()
             while not self.GAME_OVER:
-                self.guess_random()
+                if strategy == "random":
+                    guess_row, guess_col = self.guess_random()
+                elif strategy == "hunt_target":
+                    guess_row, guess_col = self.hunt_target()
+                else:
+                    raise Exception(f"invalid strategy chosen: {strategy}")
+                self.shoot(guess_row, guess_col)
             all_guesses.append(self.NUM_GUESSES)
             self.reset_board()
         print(f"{time.time() - start_time:.2f} seconds to simulate {num_runs} games")
@@ -103,9 +137,13 @@ def plot_games(num_guesses):
             games_by_score[i] = 0
     games_by_score = dict(sorted(games_by_score.items(), key=lambda item: item[0]))
     plt.plot(games_by_score.keys(), games_by_score.values())
-    plt.show()
 
 
 if __name__ == "__main__":
-    guesses = Battleship().simulate_games(10000)
-    plot_games(guesses)
+    random_guesses = Battleship().simulate_games(10000, strategy="random")
+    hunt_target_guesses = Battleship().simulate_games(10000, strategy="hunt_target")
+    plot_games(random_guesses)
+    plot_games(hunt_target_guesses)
+    plt.show()
+
+

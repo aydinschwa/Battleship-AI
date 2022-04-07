@@ -17,10 +17,15 @@ BLACK = (0, 0, 0)
 class Battleship:
 
     def __init__(self):
+
         self.SHIP_MAP = np.zeros([10, 10])
         self.SHOT_MAP = np.zeros([10, 10])
         self.SHIP_SIZES = [6, 5, 3, 3, 2]
         self.GAME_OVER = False
+
+        # ai variables
+        self.hunt = True
+        self.targets = []
 
         self.SCORE = 0
         self.NUM_GUESSES = 0
@@ -78,13 +83,27 @@ class Battleship:
             if self.SHOT_MAP[guess_row][guess_col] == 0:
                 break
 
-        self.SHOT_MAP[guess_row][guess_col] = 1
-        self.NUM_GUESSES += 1
+        return guess_row, guess_col
+
+    def hunt_target(self):
+        # enter hunt mode when no more targets left
+        if not self.targets:
+            guess_row, guess_col = self.guess_random()
+        else:
+            guess_row, guess_col = self.targets.pop()
 
         if self.SHIP_MAP[guess_row][guess_col] == 1:
-            self.SCORE += 1
-        if self.SCORE == sum(self.SHIP_SIZES):
-            self.GAME_OVER = True
+            # add all adjacent squares to list of potential targets where possible
+            potential_targets = [(guess_row + 1, guess_col), (guess_row, guess_col + 1),
+                                 (guess_row - 1, guess_col), (guess_row, guess_col - 1)]
+            for target_row, target_col in potential_targets:
+                if (0 <= target_row <= 9) and \
+                   (0 <= target_col <= 9) and \
+                   (self.SHOT_MAP[target_row][target_col] == 0) and \
+                   ((target_row, target_col) not in self.targets):
+                    self.targets.append((target_row, target_col))
+
+        return guess_row, guess_col
 
     def draw_board(self):
         board_y = 0
@@ -111,9 +130,24 @@ class Battleship:
             board_y += SQUARE_SIZE + OFFSET_SIZE
 
     def reset_board(self):
-        self.SCORE = 0
         self.SHIP_MAP = np.zeros([10, 10])
         self.SHOT_MAP = np.zeros([10, 10])
+        self.SHIP_SIZES = [6, 5, 3, 3, 2]
+        self.GAME_OVER = False
+
+        self.targets = []
+
+        self.SCORE = 0
+        self.NUM_GUESSES = 0
+
+    def shoot(self, guess_row, guess_col):
+        self.SHOT_MAP[guess_row][guess_col] = 1
+        self.NUM_GUESSES += 1
+
+        if self.SHIP_MAP[guess_row][guess_col] == 1:
+            self.SCORE += 1
+        if self.SCORE == sum(self.SHIP_SIZES):
+            self.GAME_OVER = True
 
     def play(self):
         self.place_ships()
@@ -123,7 +157,9 @@ class Battleship:
                     pg.quit()
                     sys.exit()
                 if event.type == self.GUESS_EVENT:
-                    self.guess_random()
+                    guess_row, guess_col = self.hunt_target()
+                    self.shoot(guess_row, guess_col)
+
                 if event.type == pg.MOUSEBUTTONDOWN:
                     mx, my = pg.mouse.get_pos()
                     total_x_offset = (mx // SQUARE_SIZE) * OFFSET_SIZE
