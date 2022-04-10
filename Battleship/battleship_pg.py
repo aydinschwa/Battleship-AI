@@ -33,7 +33,7 @@ class Battleship:
 
         self.SCORE = 0
         self.NUM_GUESSES = 0
-        self.GUESS_DELAY = 250
+        self.GUESS_DELAY = 500
         self.GUESS_EVENT = pg.USEREVENT
         pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
         self.GAME_OVER = False
@@ -121,15 +121,39 @@ class Battleship:
                     # increase probability of attacking squares near successful hits
                     if self.SHOT_MAP[row][col] == 1 and \
                             self.SHIP_MAP[row][col] == 1 and \
-                            (row, col) not in self.SUNK_SHIP_COORDINATES:
+                            (row, col) not in self.SUNK_SHIP_COORDINATES:  # un-weight hits on sunk ships
+
                         if (row + 1 <= 9) and (self.SHOT_MAP[row + 1][col] == 0):
-                            prob_map[row + 1][col] += 10
+                            if (row - 1 >= 0) and \
+                                    (row - 1, col) not in self.SUNK_SHIP_COORDINATES and \
+                                    (self.SHOT_MAP[row - 1][col] == self.SHIP_MAP[row - 1][col] == 1):
+                                prob_map[row + 1][col] += 15
+                            else:
+                                prob_map[row + 1][col] += 10
+
                         if (row - 1 >= 0) and (self.SHOT_MAP[row - 1][col] == 0):
-                            prob_map[row - 1][col] += 10
+                            if (row + 1 <= 9) and \
+                                    (row + 1, col) not in self.SUNK_SHIP_COORDINATES and \
+                                    (self.SHOT_MAP[row + 1][col] == self.SHIP_MAP[row + 1][col] == 1):
+                                prob_map[row - 1][col] += 15
+                            else:
+                                prob_map[row - 1][col] += 10
+
                         if (col + 1 <= 9) and (self.SHOT_MAP[row][col + 1] == 0):
-                            prob_map[row][col + 1] += 10
+                            if (col - 1 >= 0) and \
+                                    (row, col - 1) not in self.SUNK_SHIP_COORDINATES and \
+                                    (self.SHOT_MAP[row][col - 1] == self.SHIP_MAP[row][col - 1] == 1):
+                                prob_map[row][col + 1] += 15
+                            else:
+                                prob_map[row][col + 1] += 10
+
                         if (col - 1 >= 0) and (self.SHOT_MAP[row][col - 1] == 0):
-                            prob_map[row][col - 1] += 10
+                            if (col + 1 <= 9) and \
+                                    (row, col + 1) not in self.SUNK_SHIP_COORDINATES and \
+                                    (self.SHOT_MAP[row][col + 1] == self.SHIP_MAP[row][col + 1] == 1):
+                                prob_map[row][col - 1] += 15
+                            else:
+                                prob_map[row][col - 1] += 10
 
                     # decrease probability for misses to zero
                     elif self.SHOT_MAP[row][col] == 1 and self.SHIP_MAP[row][col] != 1:
