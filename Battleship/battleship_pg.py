@@ -20,8 +20,10 @@ class Battleship:
     def __init__(self):
 
         self.SHIP_MAP = np.zeros([10, 10])
-        self.SHIP_SIZES = [5, 4, 3, 3, 2]
-        self.SHIP_COORDINATES = dict()
+        self.SHIP_INFO = {"Carrier": 5, "Battleship": 4, "Destroyer": 3, "Submarine": 3, "Patrol Boat": 2}
+        self.SHIP_COORDINATE_DICT = dict()
+        self.COORDINATE_SHIP_DICT = dict()
+        self.SUNK_SHIP_COORDINATES = []
         self.SHOT_MAP = np.zeros([10, 10])
         self.PROB_MAP = np.zeros([10, 10])
 
@@ -31,14 +33,13 @@ class Battleship:
 
         self.SCORE = 0
         self.NUM_GUESSES = 0
-        self.GUESS_DELAY = 500
+        self.GUESS_DELAY = 250
         self.GUESS_EVENT = pg.USEREVENT
         pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
         self.GAME_OVER = False
 
     def place_ships(self):
-        for ship_size in self.SHIP_SIZES:
-
+        for ship, ship_size in self.SHIP_INFO.items():
             # select random start point for ship that isn't on top of another ship
             while True:
                 start_row = random.choice(range(10))
@@ -76,16 +77,17 @@ class Battleship:
                 # check that all spaces that we want to insert into are clear
                 if np.all(self.SHIP_MAP[start_row:end_row, start_col:end_col] == 0):
                     self.SHIP_MAP[start_row:end_row, start_col:end_col] = 1
-
                     # create a quickly-searchable dictionary of coordinates mapped to ships
                     if const_axis == "row":
                         coord_list = list(zip([start_row] * ship_size, [col for col in range(start_col, end_col)]))
+                        self.SHIP_COORDINATE_DICT[ship] = coord_list
                         for coord in coord_list:
-                            self.SHIP_COORDINATES[coord] = ship_size
+                            self.COORDINATE_SHIP_DICT[coord] = ship
                     elif const_axis == "col":
                         coord_list = list(zip([row for row in range(start_row, end_row)], [start_col] * ship_size))
+                        self.SHIP_COORDINATE_DICT[ship] = coord_list
                         for coord in coord_list:
-                            self.SHIP_COORDINATES[coord] = ship_size
+                            self.COORDINATE_SHIP_DICT[coord] = ship
 
                 else:
                     continue
@@ -93,8 +95,8 @@ class Battleship:
 
     def gen_prob_map(self):
         prob_map = np.zeros([10, 10])
-        for ship_size in set(self.SHIP_COORDINATES.values()):
-            print(set(self.SHIP_COORDINATES.values()))
+        for ship_name in set(self.COORDINATE_SHIP_DICT.values()):
+            ship_size = self.SHIP_INFO[ship_name]
             use_size = ship_size - 1
             # check where a ship will fit on the board
             for row in range(10):
@@ -117,7 +119,9 @@ class Battleship:
                                 prob_map[start_row:end_row, start_col:end_col] += 1
 
                     # increase probability of attacking squares near successful hits
-                    if self.SHOT_MAP[row][col] == 1 and self.SHIP_MAP[row][col] == 1:
+                    if self.SHOT_MAP[row][col] == 1 and \
+                            self.SHIP_MAP[row][col] == 1 and \
+                            (row, col) not in self.SUNK_SHIP_COORDINATES:
                         if (row + 1 <= 9) and (self.SHOT_MAP[row + 1][col] == 0):
                             prob_map[row + 1][col] += 10
                         if (row - 1 >= 0) and (self.SHOT_MAP[row - 1][col] == 0):
@@ -213,23 +217,16 @@ class Battleship:
             board_x = 500
             for j in range(10):
                 if np.sum(self.PROB_MAP):
-                    pass
-                    pg.draw.rect(SCREEN, (self.PROB_MAP[i][j] * 3, 0, 0), pg.Rect(board_x, board_y, SQUARE_SIZE, SQUARE_SIZE))
+                    red_heat = 255 * self.PROB_MAP[i][j] / np.amax(self.PROB_MAP)
+                    pg.draw.rect(SCREEN, (red_heat, 0, 0),
+                                 pg.Rect(board_x, board_y, SQUARE_SIZE, SQUARE_SIZE))
 
                 board_x += SQUARE_SIZE + OFFSET_SIZE
 
             board_y += SQUARE_SIZE + OFFSET_SIZE
 
     def reset_board(self):
-        self.SHIP_MAP = np.zeros([10, 10])
-        self.SHOT_MAP = np.zeros([10, 10])
-        self.SHIP_SIZES = [6, 5, 3, 3, 2]
-        self.GAME_OVER = False
-
-        self.targets = []
-
-        self.SCORE = 0
-        self.NUM_GUESSES = 0
+        self.__init__()
 
     def shoot(self, guess_row, guess_col):
         self.SHOT_MAP[guess_row][guess_col] = 1
@@ -237,9 +234,13 @@ class Battleship:
 
         if self.SHIP_MAP[guess_row][guess_col] == 1:
             self.SCORE += 1
-            self.SHIP_COORDINATES.pop((guess_row, guess_col))
+            ship = self.COORDINATE_SHIP_DICT.pop((guess_row, guess_col))
+            # if ship is sunk, add its coordinates to list of sunken ship coordinates
+            if ship not in self.COORDINATE_SHIP_DICT.values():
+                self.SUNK_SHIP_COORDINATES.extend(self.SHIP_COORDINATE_DICT[ship])
+                self.SHIP_COORDINATE_DICT.pop(ship)
 
-        if self.SCORE == sum(self.SHIP_SIZES):
+        if self.SCORE == sum(self.SHIP_INFO.values()):
             self.GAME_OVER = True
 
     def play(self):

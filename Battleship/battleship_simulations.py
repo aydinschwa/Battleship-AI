@@ -252,12 +252,12 @@ def sim_all_strategies(num_games=10000):
     ht_guesses = Battleship().simulate_games(num_games, strategy="hunt_target")
     ht_parity_guesses = Battleship().simulate_games(num_games, strategy="hunt_target_parity")
     ht_parity_min_guesses = Battleship().simulate_games(num_games, strategy="hunt_target_min_parity")
-    prob_guesses = Battleship().simulate_games(num_games, strategy="prob")
+    # prob_guesses = Battleship().simulate_games(num_games, strategy="prob")
     plot_games(random_guesses)
     plot_games(ht_guesses)
     plot_games(ht_parity_guesses)
     plot_games(ht_parity_min_guesses)
-    plot_games(prob_guesses)
+    # plot_games(prob_guesses)
     plt.show()
 
 
