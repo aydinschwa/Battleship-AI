@@ -1,15 +1,25 @@
+import pygame as pg
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-import time
-from collections import Counter
-import multiprocessing
-import pickle
+import sys
+
+pg.init()
+pg.display.set_caption("Battleship")
+SCREEN_WIDTH = 1000
+SCREEN_HEIGHT = 600
+SCREEN = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+SQUARE_SIZE = 45
+OFFSET_SIZE = 2
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (200, 0, 0)
 
 
 class Battleship:
 
     def __init__(self):
+
         self.SHIP_MAP = np.zeros([10, 10])
         self.SHIP_INFO = {"Carrier": 5, "Battleship": 4, "Destroyer": 3, "Submarine": 3, "Patrol Boat": 2}
         self.SHIP_COORDINATE_DICT = dict()
@@ -22,8 +32,13 @@ class Battleship:
         self.hunt = True
         self.targets = []
 
+        self.BOARD_X = 25
+        self.BOARD_Y = 10
         self.SCORE = 0
         self.NUM_GUESSES = 0
+        self.GUESS_DELAY = 250
+        self.GUESS_EVENT = pg.USEREVENT
+        pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
         self.GAME_OVER = False
 
     def place_ships(self):
@@ -149,9 +164,6 @@ class Battleship:
 
         self.PROB_MAP = prob_map
 
-    def reset_board(self):
-        self.__init__()
-
     def guess_random(self, parity=None):
         while True:
             guess_row, guess_col = random.choice(range(10)), random.choice(range(10))
@@ -192,6 +204,71 @@ class Battleship:
 
         return guess_row, guess_col
 
+    def draw_board(self):
+        board_y = self.BOARD_Y
+        for i in range(10):
+            board_x = self.BOARD_X
+            for j in range(10):
+                if self.SHIP_MAP[i][j] == 0:
+                    pg.draw.rect(SCREEN, WHITE, pg.Rect(board_x, board_y, SQUARE_SIZE, SQUARE_SIZE))
+                elif self.SHIP_MAP[i][j] == 1:
+                    pg.draw.rect(SCREEN, (111, 111, 111), pg.Rect(board_x, board_y, SQUARE_SIZE, SQUARE_SIZE))
+
+                if self.SHOT_MAP[i][j] == 1:
+                    pg.draw.line(SCREEN, BLACK,
+                                 (board_x, board_y),
+                                 (board_x + SQUARE_SIZE, board_y + SQUARE_SIZE),
+                                 width=5)
+                    pg.draw.line(SCREEN, BLACK,
+                                 (board_x, board_y + SQUARE_SIZE),
+                                 (board_x + SQUARE_SIZE, board_y),
+                                 width=5)
+
+                if self.SHIP_MAP[i][j] == 1 and self.SHOT_MAP[i][j] == 1:
+                    pg.draw.line(SCREEN, RED,
+                                 (board_x, board_y),
+                                 (board_x + SQUARE_SIZE, board_y + SQUARE_SIZE),
+                                 width=5)
+                    pg.draw.line(SCREEN, RED,
+                                 (board_x, board_y + SQUARE_SIZE),
+                                 (board_x + SQUARE_SIZE, board_y),
+                                 width=5)
+
+                board_x += SQUARE_SIZE + OFFSET_SIZE
+
+            board_y += SQUARE_SIZE + OFFSET_SIZE
+
+    def draw_heat_map(self):
+        self.gen_prob_map()
+        board_y = 10
+        for i in range(10):
+            board_x = 500
+            for j in range(10):
+                if np.sum(self.PROB_MAP):
+                    size_factor = 255 * self.PROB_MAP[i][j] / np.amax(self.PROB_MAP)
+                    red, green, blue = (0, 0, 0)
+                    if size_factor >= 220:
+                        red = size_factor
+                        green = 0
+                        blue = 0
+                    elif 70 <= size_factor < 220:
+                        red = size_factor
+                        green = size_factor // 3
+                        blue = 0
+                    elif 0 <= size_factor < 70:
+                        red = 0
+                        green = 0
+                        blue = size_factor
+                    pg.draw.rect(SCREEN, (red, green, blue),
+                                 pg.Rect(board_x, board_y, SQUARE_SIZE, SQUARE_SIZE))
+
+                board_x += SQUARE_SIZE + OFFSET_SIZE
+
+            board_y += SQUARE_SIZE + OFFSET_SIZE
+
+    def reset_board(self):
+        self.__init__()
+
     def shoot(self, guess_row, guess_col):
         self.SHOT_MAP[guess_row][guess_col] = 1
         self.NUM_GUESSES += 1
@@ -207,74 +284,55 @@ class Battleship:
         if self.SCORE == sum(self.SHIP_INFO.values()):
             self.GAME_OVER = True
 
-    def simulate_games(self, num_games, strategy="random"):
-        start_time = time.time()
-        all_guesses = []
-        for i in range(num_games):
-            print(i) if i % 10 == 0 else 0
-            self.place_ships()
-            while not self.GAME_OVER:
-                if strategy == "random":
-                    guess_row, guess_col = self.guess_random()
-                elif strategy == "hunt_target":
-                    guess_row, guess_col = self.hunt_target()
-                elif strategy == "hunt_target_parity":
-                    guess_row, guess_col = self.hunt_target(2)
-                elif strategy == "hunt_target_min_parity":
-                    smallest_remaining_ship = min([self.SHIP_INFO[ship] for ship in self.COORDINATE_SHIP_DICT.values()])
-                    guess_row, guess_col = self.hunt_target(smallest_remaining_ship)
-                elif strategy == "prob":
+    def play(self):
+        self.place_ships()
+        self.gen_prob_map()
+        while True:
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    pg.quit()
+                    sys.exit()
+                if event.type == self.GUESS_EVENT:
                     guess_row, guess_col = self.guess_prob()
-                else:
-                    raise Exception(f"invalid strategy chosen: {strategy}")
-                self.shoot(guess_row, guess_col)
-            all_guesses.append(self.NUM_GUESSES)
-            self.reset_board()
-        print(f'{time.time() - start_time:.2f} seconds to simulate {num_games} games with the "{strategy}" strategy')
-        return all_guesses
+                    self.shoot(guess_row, guess_col)
 
+                if event.type == pg.MOUSEBUTTONDOWN:
+                    mx, my = pg.mouse.get_pos()
+                    total_x_offset = (mx // SQUARE_SIZE) * OFFSET_SIZE + self.BOARD_X
+                    total_y_offset = (my // SQUARE_SIZE) * OFFSET_SIZE + self.BOARD_Y
+                    board_x = (mx - total_x_offset) // SQUARE_SIZE
+                    board_y = (my - total_y_offset) // SQUARE_SIZE
+                    if (0 <= board_x <= 9) and (0 <= board_y <= 9):
+                        self.SHOT_MAP[board_y][board_x] = 1
 
-def plot_games(num_guesses):
-    games_by_score = Counter(num_guesses)
-    for i in range(101):
-        if i not in games_by_score.keys():
-            games_by_score[i] = 0
-    games_by_score = dict(sorted(games_by_score.items(), key=lambda item: item[0]))
-    plt.plot(games_by_score.keys(), games_by_score.values())
+                if event.type == pg.KEYDOWN:
+                    if event.key == pg.K_r:
+                        self.reset_board()
+                    if event.key == pg.K_s:
+                        self.reset_board()
+                        self.place_ships()
+                    if event.key == pg.K_SPACE:
+                        # plt.imshow(self.PROB_MAP, cmap='hot', interpolation='nearest')
+                        # plt.show()
+                        if self.GUESS_DELAY == 99999:
+                            self.GUESS_DELAY = 500
+                        else:
+                            self.GUESS_DELAY = 99999
+                        pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
 
+            if self.GAME_OVER:
+                print(self.NUM_GUESSES)
+                self.GUESS_DELAY = 99999
+                pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
+                self.draw_board()
+                self.draw_heat_map()
 
-def sim_all_strategies(num_games=1):
-    random_guesses = Battleship().simulate_games(num_games, strategy="random")
-    ht_guesses = Battleship().simulate_games(num_games, strategy="hunt_target")
-    ht_parity_guesses = Battleship().simulate_games(num_games, strategy="hunt_target_parity")
-    ht_parity_min_guesses = Battleship().simulate_games(num_games, strategy="hunt_target_min_parity")
-    prob_guesses = Battleship().simulate_games(num_games, strategy="prob")
+            SCREEN.fill(BLACK)
+            self.draw_board()
+            self.draw_heat_map()
 
-    return random_guesses, ht_guesses, ht_parity_guesses, ht_parity_min_guesses, prob_guesses
-
-
-def plot_all_strategies(guess_lists):
-    for guess_list in guess_lists:
-        plot_games(guess_list)
-
-
-def sim_strategy(file_num, num_games=200000):
-    prob_guesses = Battleship().simulate_games(num_games, strategy="hunt_target_min_parity")
-    FileStore = open(f"stored_objects/guesses_{file_num}.pickle", "wb")
-    pickle.dump(prob_guesses, FileStore)
-    FileStore.close()
+            pg.display.update()
 
 
 if __name__ == "__main__":
-    processes = []
-    for i in range(5):
-        p = multiprocessing.Process(target=sim_strategy, args=(str(i),))
-        p.start()
-        processes.append(p)
-
-    for p in processes:
-        p.join()
-
-    all_guesses = []
-
-    print(len(all_guesses))
+    Battleship().play()
