@@ -1,5 +1,6 @@
 import pygame as pg
 import numpy as np
+import matplotlib.pyplot as plt
 import random
 import sys
 
@@ -285,6 +286,7 @@ class Battleship:
 
     def play(self):
         self.place_ships()
+        self.gen_prob_map()
         while True:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -309,11 +311,21 @@ class Battleship:
                     if event.key == pg.K_s:
                         self.reset_board()
                         self.place_ships()
+                    if event.key == pg.K_SPACE:
+                        # plt.imshow(self.PROB_MAP, cmap='hot', interpolation='nearest')
+                        # plt.show()
+                        if self.GUESS_DELAY == 99999:
+                            self.GUESS_DELAY = 500
+                        else:
+                            self.GUESS_DELAY = 99999
+                        pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
 
             if self.GAME_OVER:
                 print(self.NUM_GUESSES)
-                pg.quit()
-                sys.exit()
+                self.GUESS_DELAY = 99999
+                pg.time.set_timer(self.GUESS_EVENT, self.GUESS_DELAY)
+                self.draw_board()
+                self.draw_heat_map()
 
             SCREEN.fill(BLACK)
             self.draw_board()
