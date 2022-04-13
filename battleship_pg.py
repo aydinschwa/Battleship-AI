@@ -163,21 +163,21 @@ class Battleship:
 
         self.PROB_MAP = prob_map
 
-    def guess_random(self, parity=None):
+    def guess_random(self, length=None):
         while True:
             guess_row, guess_col = random.choice(range(10)), random.choice(range(10))
-            if parity:
-                if (guess_row + guess_col) % parity != 0:
+            if length:
+                if (guess_row + guess_col) % length != 0:
                     continue
             if self.SHOT_MAP[guess_row][guess_col] == 0:
                 break
 
         return guess_row, guess_col
 
-    def hunt_target(self, parity=None):
+    def hunt_target(self, length=None):
         # enter hunt mode when no more targets left
         if not self.targets:
-            guess_row, guess_col = self.guess_random(parity)
+            guess_row, guess_col = self.guess_random(length)
         else:
             guess_row, guess_col = self.targets.pop()
 

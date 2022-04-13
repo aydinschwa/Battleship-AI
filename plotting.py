@@ -2,6 +2,7 @@ import pickle
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
+from statistics import median
 
 
 def combine_guesses():
@@ -35,6 +36,8 @@ def plot_all_games(file_names, display_names):
         guesses = pickle.load(FileStore)
         FileStore.close()
         plot_games(guesses, display_name)
+    plt.xlabel("Number of Guesses")
+    plt.ylabel("Number of Games")
     plt.legend(loc="upper left")
 
 
@@ -44,13 +47,13 @@ def plot_all_cdfs(file_names, display_names):
         guesses = pickle.load(FileStore)
         FileStore.close()
         sns.kdeplot(data=[0] + guesses + [100], cumulative=True, clip=(0, 101), label=display_name)
+    plt.xlabel("Number of Guesses")
     plt.legend(loc="upper left")
 
 
 file_names = ["random_guesses_final", "ht_guesses_final", "ht_min_parity_guesses_final", "prob_guesses_final"]
 display_names = ["Random", "Hunt / Target", "Hunt / Target Minimum", "Probabilistic"]
 num = 4
-# plot_all_games(file_names[:num], display_names[:num])
-plot_all_cdfs(file_names[:num], display_names[:num])
+plot_all_games(file_names[:num], display_names[:num])
+# plot_all_cdfs(file_names[:num], display_names[:num])
 plt.show()
-
