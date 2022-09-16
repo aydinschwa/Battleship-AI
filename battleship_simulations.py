@@ -30,37 +30,20 @@ class Battleship:
         for ship, ship_size in self.SHIP_INFO.items():
             # select random start point for ship that isn't on top of another ship
             while True:
-                start_row = random.choice(range(10))
-                start_col = random.choice(range(10))
+                start_row = random.choice(range(10-ship_size))
+                start_col = random.choice(range(10-ship_size))
 
                 # randomly choose an axis to hold constant
                 const_axis = random.choice(["row", "col"])
 
-                # randomly choose a direction
-                direction = random.choice(["up", "down"])
-
                 # select endpoint
                 if const_axis == "row":
-                    if direction == "up" and start_col - ship_size >= 0:
-                        end_row = start_row + 1
-                        end_col = start_col - ship_size
-                        start_col, end_col = end_col, start_col
-                    elif direction == "down" and start_col + ship_size <= 9:
-                        end_row = start_row + 1
-                        end_col = start_col + ship_size
-                    else:
-                        continue
+                    end_row = start_row + 1
+                    end_col = start_col + ship_size
 
                 elif const_axis == "col":
-                    if direction == "up" and start_row - ship_size >= 0:
-                        end_row = start_row - ship_size
-                        start_row, end_row = end_row, start_row
-                        end_col = start_col + 1
-                    elif direction == "down" and start_row + ship_size <= 9:
-                        end_row = start_row + ship_size
-                        end_col = start_col + 1
-                    else:
-                        continue
+                    end_row = start_row + ship_size
+                    end_col = start_col + 1
 
                 # check that all spaces that we want to insert into are clear
                 if np.all(self.SHIP_MAP[start_row:end_row, start_col:end_col] == 0):
